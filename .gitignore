@@ -5,3 +5,6 @@ dist-ssr
 *.local
 .vscode/*
 !.vscode/extensions.json
+
+# TypeScript 증분 빌드 캐시
+*.tsbuildinfo

@@ -365,7 +365,7 @@ describe('도넛 조각 묶기', () => {
     ]
     const slices = makeSlices(entries)
     expect(slices.length).toBeLessThanOrEqual(6)
-    expect(slices.at(-1)!.name).toBe('기타')
+    expect(slices.at(-1)!.name).toBe('그 외')
     expect(slices.reduce((s, x) => s + x.amount, 0)).toBe(1000)
   })
 

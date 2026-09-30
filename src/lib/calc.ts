@@ -360,7 +360,8 @@ export function makeSlices(
     out.push({ ...lump[0], ratio: lump[0].amount / total })
   } else if (lump.length > 1) {
     const amount = lump.reduce((s, e) => s + e.amount, 0)
-    out.push({ id: '__rest__', name: '기타', color: '#94A3B8', amount, ratio: amount / total })
+    // 실제 '기타' 그룹과 헷갈리지 않도록 묶음 조각은 '그 외'로 부른다.
+    out.push({ id: '__rest__', name: '그 외', color: '#94A3B8', amount, ratio: amount / total })
   }
   return out
 }

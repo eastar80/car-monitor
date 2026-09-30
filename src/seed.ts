@@ -49,3 +49,9 @@ export const CATEGORY_SEED: CatSeed[] = [
 
 /** 앱 첫 실행 시 만드는 기본 차량 이름 */
 export const DEFAULT_VEHICLE_NAME = '캡티바'
+
+/**
+ * 누적 막대의 쌓는 순서 (8.3절). 주유가 맨 아래, 그 위로 이 순서대로 쌓는다.
+ * 차량구입은 통계에서 빠지므로 여기에 없다.
+ */
+export const STACK_ORDER = ['소모품', '고정비', '수리', '기타']

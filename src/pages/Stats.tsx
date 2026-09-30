@@ -1,1 +1,249 @@
-export default function Stats() { return null }
+// 4.5 통계 화면.
+// 1단계 범위: 기간 선택기, 요약 숫자, 월별 누적 막대, 비중 도넛, 전체 보유비용.
+// (연비·유가 추이·원/km는 2단계)
+import { useMemo, useState } from 'react'
+import { Donut, StackedBars, type Series } from '../components/charts'
+import { PageTitle } from '../components/ui'
+import { useAppData } from '../hooks'
+import { FUEL_SERIES, STACK_ORDER } from '../seed'
+import {
+  bucketByPeriod,
+  bucketUnit,
+  filterExpenses,
+  filterFuel,
+  makeSlices,
+  presetPeriod,
+  statsIncludedExpenses,
+  summarize,
+  totalOwnershipCost,
+  type Period,
+  type PeriodPreset,
+} from '../lib/calc'
+import { monthRange, today, yearRange } from '../lib/date'
+import { dateDot, won, wonShort } from '../lib/format'
+
+export default function Stats() {
+  const { vehicle, groups, categories, fuelLogs, expenses, loading } = useAppData()
+  const [preset, setPreset] = useState<PeriodPreset>('thisYear')
+  const [custom, setCustom] = useState<Period>({ from: `${today().slice(0, 4)}-01-01`, to: today() })
+  /** 도넛 드릴다운: 선택한 그룹 id (null이면 그룹 단위) */
+  const [drill, setDrill] = useState<string | null>(null)
+
+  const period: Period = preset === 'custom' ? custom : presetPeriod(preset)
+
+  const view = useMemo(() => {
+    if (!vehicle) return null
+    const f = filterFuel(fuelLogs, vehicle.id, period)
+    const e = filterExpenses(expenses, vehicle.id, period)
+    const unit = bucketUnit(period)
+    const keys = unit === 'month' ? monthRange(period.from, period.to) : yearRange(period.from, period.to)
+    return {
+      fuel: f,
+      exp: e,
+      unit,
+      rows: bucketByPeriod(keys, f, e, categories, groups, unit),
+      summary: summarize(f, e, categories, groups),
+      // 전체 보유비용은 기간과 무관한 누적 합계(차량구입 포함)
+      ownership: totalOwnershipCost(
+        filterFuel(fuelLogs, vehicle.id),
+        filterExpenses(expenses, vehicle.id),
+      ),
+    }
+  }, [vehicle, fuelLogs, expenses, categories, groups, period.from, period.to])
+
+  /** 8.3절 쌓는 순서: 주유가 맨 아래, 그 위로 소모품·고정비·수리·기타 */
+  const series: Series[] = useMemo(() => {
+    const included = groups
+      .filter((g) => g.includeInStats)
+      .sort((a, b) => order(a.name) - order(b.name))
+      .map((g) => ({ key: g.id, name: g.name, color: g.color }))
+    return [{ key: FUEL_SERIES.key, name: FUEL_SERIES.name, color: FUEL_SERIES.color }, ...included]
+  }, [groups])
+
+  /** 도넛 데이터. 드릴다운 중이면 그 그룹의 카테고리별로 나눈다. */
+  const slices = useMemo(() => {
+    if (!view) return []
+    if (drill === null) {
+      const byGroup = new Map<string, number>()
+      for (const e of statsIncludedExpenses(view.exp, categories, groups)) {
+        const gid = categories.find((c) => c.id === e.categoryId)!.groupId
+        byGroup.set(gid, (byGroup.get(gid) ?? 0) + e.amount)
+      }
+      const entries = [
+        {
+          id: FUEL_SERIES.key,
+          name: FUEL_SERIES.name,
+          color: FUEL_SERIES.color,
+          amount: view.summary.fuel,
+        },
+        ...groups
+          .filter((g) => g.includeInStats)
+          .map((g) => ({ id: g.id, name: g.name, color: g.color, amount: byGroup.get(g.id) ?? 0 })),
+      ]
+      return makeSlices(entries)
+    }
+    // 특정 그룹의 카테고리별 비중
+    const group = groups.find((g) => g.id === drill)
+    const cats = categories.filter((c) => c.groupId === drill)
+    const byCat = new Map<string, number>()
+    for (const e of view.exp) {
+      if (!cats.some((c) => c.id === e.categoryId)) continue
+      byCat.set(e.categoryId, (byCat.get(e.categoryId) ?? 0) + e.amount)
+    }
+    return makeSlices(
+      cats.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        color: shade(group?.color ?? '#6B7280', i),
+        amount: byCat.get(c.id) ?? 0,
+      })),
+    )
+  }, [view, drill, categories, groups])
+
+  const drillGroup = drill ? groups.find((g) => g.id === drill) : null
+
+  if (loading) return <div className="p-6 text-slate-500">불러오는 중…</div>
+
+  return (
+    <div className="pb-4">
+      <PageTitle>통계</PageTitle>
+
+      {/* 기간 선택기 — 모든 그래프에 공통 적용된다 */}
+      <div className="space-y-2 px-4 pb-3">
+        <div className="flex gap-1.5">
+          {([
+            ['thisMonth', '이번 달'],
+            ['thisYear', '올해'],
+            ['last12', '최근 12개월'],
+            ['custom', '직접'],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => { setPreset(v); setDrill(null) }}
+              className={`min-h-[38px] flex-1 rounded-lg px-1 text-[13px] font-medium ${
+                preset === v
+                  ? 'bg-blue-600 text-white'
+                  : 'border border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {preset === 'custom' ? (
+          <div className="flex items-center gap-2">
+            <input type="date" className="field py-2 text-sm" value={custom.from}
+                   onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} />
+            <span className="text-slate-400">~</span>
+            <input type="date" className="field py-2 text-sm" value={custom.to}
+                   onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} />
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {dateDot(period.from)} ~ {dateDot(period.to)}
+          </p>
+        )}
+      </div>
+
+      {/* PC에서는 2열로 배치한다 (7.3절) */}
+      <div className="space-y-4 px-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+        {/* 1. 요약 숫자 */}
+        <section className="card md:col-span-2">
+          <div className="grid grid-cols-3 gap-2">
+            <Big label="총지출" value={view?.summary.total ?? 0} />
+            <Big label="주유비" value={view?.summary.fuel ?? 0} />
+            <Big label="정비·기타" value={view?.summary.etc ?? 0} />
+          </div>
+        </section>
+
+        {/* 2. 월별(또는 연도별) 누적 막대 */}
+        <section className="card">
+          <h2 className="mb-1 font-bold">{view?.unit === 'year' ? '연도별 지출' : '월별 지출'}</h2>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">막대를 누르면 그룹별 금액이 보입니다</p>
+          <StackedBars rows={view?.rows ?? []} series={series} unit={view?.unit ?? 'month'} />
+          {/* 범례: 색만으로 구분하지 않도록 항상 둔다 */}
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+            {series.map((s) => (
+              <li key={s.key} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+                {s.name}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* 3. 비중 도넛 */}
+        <section className="card">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-bold">{drillGroup ? `${drillGroup.name} 비중` : '지출 비중'}</h2>
+            {drill ? (
+              <button type="button" className="text-sm font-medium text-blue-600 dark:text-blue-400"
+                      onClick={() => setDrill(null)}>
+                ← 전체
+              </button>
+            ) : (
+              <span className="text-xs text-slate-500">조각을 누르면 카테고리별로 보입니다</span>
+            )}
+          </div>
+          <Donut
+            slices={slices}
+            centerLabel={drillGroup ? drillGroup.name : '총지출'}
+            onSelect={
+              drill
+                ? undefined
+                : (id) => {
+                    // 주유와 '기타로 묶인 조각'은 더 들어갈 곳이 없다.
+                    if (id === FUEL_SERIES.key || id === '__rest__') return
+                    setDrill(id)
+                  }
+            }
+          />
+        </section>
+
+        {/* 6. 전체 보유비용 */}
+        <section className="card md:col-span-2">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <div className="font-bold">전체 보유비용</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">기간과 무관한 누적 합계 (차량구입 포함)</div>
+            </div>
+            <div className="text-xl font-bold" title={won(view?.ownership ?? 0)}>
+              {wonShort(view?.ownership ?? 0)}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function Big({ label, value }: { label: string; value: number }) {
+  return (
+    <div title={won(value)}>
+      <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-2xl font-bold">{wonShort(value)}</div>
+    </div>
+  )
+}
+
+/** 쌓는 순서에서의 자리. 목록에 없으면 뒤로 보낸다. */
+function order(name: string): number {
+  const i = STACK_ORDER.indexOf(name)
+  return i === -1 ? STACK_ORDER.length : i
+}
+
+/**
+ * 드릴다운 도넛용 색. 그룹 색을 기준으로 밝기만 단계적으로 바꿔
+ * "같은 그룹 안"이라는 것이 보이게 한다.
+ */
+function shade(hex: string, step: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  // 단계마다 12%씩 밝게. 너무 밝아지지 않도록 5단계에서 되돌린다.
+  const f = 1 + (step % 5) * 0.14
+  const ch = (v: number) => Math.min(255, Math.round(v * f))
+  const r = ch((n >> 16) & 255)
+  const g = ch((n >> 8) & 255)
+  const b = ch(n & 255)
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+}

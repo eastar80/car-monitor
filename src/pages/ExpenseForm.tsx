@@ -45,10 +45,14 @@ export default function ExpenseForm() {
     }
   }, [loading, ready, editing, id, navigate])
 
-  /** 카테고리를 그룹별로 묶고, 그룹 안에서는 자주 쓴 순서로 정렬한다. */
+  /**
+   * 카테고리를 그룹별 칩으로 묶는다.
+   * 입력이 빨라야 하므로 그룹도, 그룹 안 카테고리도 자주 쓴 순서로 위에 올린다.
+   */
   const chipGroups = useMemo(() => {
     const useCount = new Map<string, number>()
     for (const e of expenses) useCount.set(e.categoryId, (useCount.get(e.categoryId) ?? 0) + 1)
+
     const byGroup = new Map<string, Category[]>()
     for (const c of categories) {
       // 보관한 카테고리는 숨기되, 수정 중인 기록이 쓰고 있으면 남겨둔다.
@@ -60,9 +64,14 @@ export default function ExpenseForm() {
     for (const list of byGroup.values()) {
       list.sort((a, b) => (useCount.get(b.id) ?? 0) - (useCount.get(a.id) ?? 0) || a.sortOrder - b.sortOrder)
     }
+
+    const groupUse = (g: Group) =>
+      (byGroup.get(g.id) ?? []).reduce((s, c) => s + (useCount.get(c.id) ?? 0), 0)
+
     return groups
       .map((g) => ({ group: g, items: byGroup.get(g.id) ?? [] }))
       .filter((x) => x.items.length > 0)
+      .sort((a, b) => groupUse(b.group) - groupUse(a.group) || a.group.sortOrder - b.group.sortOrder)
   }, [categories, groups, expenses, categoryId])
 
   const odoValue = Number(odometer)
