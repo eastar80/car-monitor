@@ -236,7 +236,7 @@ export function Donut({
 
   return (
     <div className="md:flex md:items-center md:gap-4">
-      <div className="relative mx-auto h-56 w-56 shrink-0">
+      <div className="relative mx-auto h-56 w-56 shrink-0 md:h-48 md:w-48">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -269,7 +269,7 @@ export function Donut({
       </div>
 
       {/* 범례 겸 목록. 금액 내림차순이며 색만으로 구분하지 않도록 이름·금액을 함께 쓴다. */}
-      <ul className="mt-3 flex-1 space-y-1 md:mt-0">
+      <ul className="mt-3 min-w-0 flex-1 space-y-1 md:mt-0">
         {slices.map((s) => (
           <li key={s.id}>
             <button
@@ -283,7 +283,7 @@ export function Donut({
               <span className="tabular-nums text-slate-500 dark:text-slate-400">
                 {(s.ratio * 100).toFixed(0)}%
               </span>
-              <span className="w-20 shrink-0 text-right font-medium tabular-nums" title={won(s.amount)}>
+              <span className="w-16 shrink-0 text-right font-medium tabular-nums" title={won(s.amount)}>
                 {wonShort(s.amount)}
               </span>
             </button>

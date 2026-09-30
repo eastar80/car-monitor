@@ -22,7 +22,7 @@ export default function App() {
   const showTabs = TAB_PATHS.includes(pathname)
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col">
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col md:max-w-5xl">
       <main className={showTabs ? 'flex-1 pb-24' : 'flex-1 pb-8'}>
         <Suspense fallback={<div className="p-6 text-slate-500">불러오는 중…</div>}>
         <Routes>
@@ -49,7 +49,7 @@ export default function App() {
 function TabBar() {
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-3xl border-t border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95"
+      className="fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-3xl border-t md:max-w-5xl border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <Tab to="/" label="홈" icon="M3 11l9-8 9 8M5 10v10h14V10" />
