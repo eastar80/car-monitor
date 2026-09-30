@@ -7,6 +7,8 @@ import {
   Bar,
   BarChart,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -14,8 +16,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { BucketRow, Slice } from '../lib/calc'
-import { monthLabel, won, wonShort } from '../lib/format'
+import type { BucketRow, PricePoint, Slice, YearMileage } from '../lib/calc'
+import { dateDot, monthLabel, num, won, wonShort } from '../lib/format'
 
 /** 시스템 다크 모드 여부 */
 export function useDarkMode(): boolean {
@@ -306,10 +308,168 @@ function SliceTooltip({ active, payload }: { active?: boolean; payload?: { paylo
 }
 
 /** 데이터가 없을 때는 빈 그래프 대신 문구를 보여준다 (8.3절) */
-function NoData() {
+function NoData({ children = '기록이 없습니다' }: { children?: React.ReactNode }) {
   return (
     <div className="grid h-40 place-items-center text-sm text-slate-500 dark:text-slate-400">
-      기록이 없습니다
+      {children}
+    </div>
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// 연비 막대 (연도별)
+// ---------------------------------------------------------------------------
+
+/**
+ * 연도별 연비 막대. (8.3절)
+ * 주유 기록이 3건 미만이라 계산하지 못한 연도는 빈 막대로 두고 라벨만 붙인다.
+ */
+export function MileageBars({ rows }: { rows: YearMileage[] }) {
+  const dark = useDarkMode()
+  const axis = dark ? '#64748B' : '#94A3B8'
+  const bar = '#16A34A'
+
+  if (rows.length === 0 || rows.every((r) => r.kmPerLiter === null)) {
+    return <NoData>연비를 계산할 기록이 부족합니다</NoData>
+  }
+
+  const data = rows.map((r) => ({
+    label: r.year.slice(2),
+    value: r.kmPerLiter ?? 0,
+    missing: r.kmPerLiter === null,
+  }))
+
+  return (
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 18, right: 4, bottom: 0, left: 4 }} barCategoryGap="22%">
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 11, fill: axis }}
+            tickLine={false}
+            axisLine={{ stroke: axis, strokeOpacity: 0.3 }}
+          />
+          <YAxis hide />
+          <Tooltip cursor={{ fill: dark ? '#FFFFFF10' : '#0F172A08' }} content={<MileageTooltip />} />
+          <Bar dataKey="value" fill={bar} radius={[4, 4, 0, 0]} isAnimationActive animationDuration={300}
+               label={(props: unknown) => {
+                 const { x, y, width, index } = props as { x: number; y: number; width: number; index: number }
+                 const d = data[index]
+                 return (
+                   <text
+                     x={x + width / 2}
+                     y={d.missing ? y - 5 : y - 5}
+                     textAnchor="middle"
+                     fontSize={10}
+                     fill={d.missing ? axis : dark ? '#CBD5E1' : '#475569'}
+                   >
+                     {d.missing ? '부족' : num(d.value, 1)}
+                   </text>
+                 )
+               }} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 유가 추이 (선)
+// ---------------------------------------------------------------------------
+
+/**
+ * 리터당 가격 선 그래프. (8.3절)
+ * 점은 찍지 않고 선만 그리며, 최고·최저점에만 값 라벨을 붙인다.
+ */
+export function PriceLine({ points }: { points: PricePoint[] }) {
+  const dark = useDarkMode()
+  const axis = dark ? '#64748B' : '#94A3B8'
+
+  if (points.length < 2) return <NoData />
+
+  let minI = 0
+  let maxI = 0
+  points.forEach((p, i) => {
+    if (p.price < points[minI].price) minI = i
+    if (p.price > points[maxI].price) maxI = i
+  })
+
+  const data = points.map((p, i) => ({ ...p, label: p.date.slice(2, 7).replace('-', '.'), i }))
+
+  return (
+    <div className="h-48 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        {/* 오른쪽 여백을 조금 더 둬야 마지막 x축 라벨이 잘리지 않는다 */}
+        <LineChart data={data} margin={{ top: 22, right: 24, bottom: 0, left: 16 }}>
+          <XAxis
+            dataKey="label"
+            // 점이 많으므로 라벨은 드문드문 그린다.
+            interval={Math.max(Math.floor(data.length / 5) - 1, 0)}
+            tick={{ fontSize: 11, fill: axis }}
+            tickLine={false}
+            axisLine={{ stroke: axis, strokeOpacity: 0.3 }}
+          />
+          <YAxis hide domain={['dataMin - 80', 'dataMax + 80']} />
+          <Tooltip content={<PriceTooltip />} />
+          <Line
+            type="monotone"
+            dataKey="price"
+            stroke="#2563EB"
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive
+            animationDuration={300}
+            label={(props: unknown) => {
+              const { x, y, index } = props as { x: number; y: number; index: number }
+              if (index !== minI && index !== maxI) return <g />
+              const isMax = index === maxI
+              return (
+                <text
+                  x={x}
+                  y={isMax ? y - 8 : y + 14}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fontWeight={600}
+                  fill={dark ? '#CBD5E1' : '#475569'}
+                >
+                  {num(data[index].price)}
+                </text>
+              )
+            }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function MileageTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { payload: { value: number; missing: boolean } }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900">
+      <div className="font-bold">20{label}년</div>
+      <div>{d.missing ? '데이터 부족' : `${num(d.value, 2)} km/L`}</div>
+    </div>
+  )
+}
+
+function PriceTooltip({ active, payload }: { active?: boolean; payload?: { payload: PricePoint }[] }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900">
+      <div className="font-bold">{dateDot(d.date)}</div>
+      <div>{won(d.price)} / L</div>
     </div>
   )
 }

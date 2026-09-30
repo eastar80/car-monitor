@@ -108,7 +108,7 @@ export default function Home() {
                    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0z" />
               </svg>
-              교환 시기
+              교환·갱신 시기
             </h2>
             <ul className="space-y-1.5">
               {alerts.map((s) => (

@@ -11,13 +11,16 @@ import {
   makeSlices,
   periodMileage,
   presetPeriod,
+  pricePoints,
   previousMonthPeriod,
   statsIncludedExpenses,
   summarize,
   totalCostPerKm,
   totalOwnershipCost,
+  yearlyMileage,
 } from '../calc'
 import { addMonths, diffDays, endOfMonth, monthRange } from '../date'
+import { lastChangeText, remainText, statusColor } from '../../components/IntervalBar'
 
 // --- 테스트용 레코드 만들기 도우미 -----------------------------------------
 
@@ -391,5 +394,78 @@ describe('날짜 도우미', () => {
 
   it('월 목록은 연도를 넘어가도 이어진다', () => {
     expect(monthRange('2025-11-05', '2026-02-01')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+  })
+})
+
+// --- 2단계: 연비 집계와 유가 추이 ------------------------------------------
+
+describe('연도별 연비', () => {
+  it('각 연도에 5.1절 규칙을 따로 적용한다', () => {
+    const logs = [
+      // 2025년: 3건, 주행 1000 km, 마지막 건 제외 리터 합 50
+      fuel('2025-01-01', 1000, 20),
+      fuel('2025-06-01', 1500, 30),
+      fuel('2025-12-01', 2000, 40),
+      // 2026년: 2건뿐 → 데이터 부족
+      fuel('2026-01-01', 2500, 40),
+      fuel('2026-02-01', 3000, 40),
+    ]
+    const rows = yearlyMileage(logs, ['2025', '2026'])
+    expect(rows[0]).toMatchObject({ year: '2025', count: 3 })
+    expect(rows[0].kmPerLiter).toBeCloseTo(1000 / 50, 10)
+    expect(rows[1]).toMatchObject({ year: '2026', count: 2, kmPerLiter: null })
+  })
+
+  it('기록이 없는 연도는 null로 둔다', () => {
+    const rows = yearlyMileage([], ['2024'])
+    expect(rows).toEqual([{ year: '2024', kmPerLiter: null, count: 0 }])
+  })
+})
+
+describe('유가 추이', () => {
+  it('날짜순으로 리터당 가격을 뽑는다', () => {
+    const logs = [
+      fuel('2026-03-01', 2000, 40, 80000),
+      fuel('2026-01-01', 1000, 20, 30000),
+    ]
+    expect(pricePoints(logs)).toEqual([
+      { date: '2026-01-01', price: 1500 },
+      { date: '2026-03-01', price: 2000 },
+    ])
+  })
+})
+
+// --- 교환주기 표시 문구 ------------------------------------------------------
+
+describe('교환주기 표시 문구', () => {
+  const TODAY = '2026-06-01'
+
+  it('기록이 없으면 기록 없음으로 적는다', () => {
+    const s = intervalStatus(cat('c-oil', '엔진오일', 'g-sup', 10000, null), [], 50000, TODAY)
+    expect(remainText(s)).toBe('기록 없음')
+    expect(lastChangeText(s)).toBe('교환 기록이 없습니다')
+    expect(statusColor(s.state)).toBe('#94A3B8')
+  })
+
+  it('km 기준이면 남은/초과 거리를 적는다', () => {
+    const c = cat('c-urea', '요소수', 'g-sup', 10000, null)
+    const ok = intervalStatus(c, [expense('2026-01-01', 40000, 'c-urea', 5)], 44000, TODAY)
+    expect(remainText(ok)).toBe('6,000 km 남음')
+    const over = intervalStatus(c, [expense('2026-01-01', 40000, 'c-urea', 5)], 51500, TODAY)
+    expect(remainText(over)).toBe('1,500 km 초과')
+    expect(statusColor(over.state)).toBe('#DC2626')
+  })
+
+  it('개월 기준이면 남은/초과 일수를 적는다', () => {
+    const c = cat('c-bat', '배터리', 'g-sup', null, 12)
+    const over = intervalStatus(c, [expense('2025-01-01', 10000, 'c-bat', 5)], 20000, TODAY)
+    expect(remainText(over)).toMatch(/일 초과$/)
+    expect(statusColor(over.state)).toBe('#DC2626')
+  })
+
+  it('마지막 교환은 날짜와 주행거리를 함께 적는다', () => {
+    const c = cat('c-oil', '엔진오일', 'g-sup', 10000, null)
+    const s = intervalStatus(c, [expense('2025-05-17', 33627, 'c-oil', 5)], 42249, TODAY)
+    expect(lastChangeText(s)).toBe('마지막 교환 2025.05.17 · 33,627 km')
   })
 })

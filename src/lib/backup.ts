@@ -1,6 +1,6 @@
 // 7절 백업·복원, 그리고 엑셀 가져오기 결과를 DB에 반영하는 부분.
 import { SCHEMA_VERSION, db, now, uuid, type CarDB } from '../db'
-import type { BackupFile, Expense, FuelLog } from '../types'
+import type { BackupFile, Category, Expense, FuelLog, Group } from '../types'
 import type { ImportPreview } from './excel'
 
 // ---------------------------------------------------------------------------
@@ -255,3 +255,82 @@ export async function applyExcelImport(
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// 7.1 CSV 내보내기 (엑셀에서 열어보는 용도)
+// ---------------------------------------------------------------------------
+
+/**
+ * CSV 한 칸을 안전하게 감싼다.
+ * 콤마·따옴표·줄바꿈이 들어 있으면 따옴표로 묶고, 안의 따옴표는 두 번 쓴다.
+ */
+function csvCell(v: unknown): string {
+  const s = v == null ? '' : String(v)
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
+}
+
+function toCsv(header: string[], rows: unknown[][]): string {
+  const lines = [header, ...rows].map((r) => r.map(csvCell).join(','))
+  // 엑셀이 한글을 깨뜨리지 않도록 BOM을 앞에 붙인다.
+  return '﻿' + lines.join('\r\n') + '\r\n'
+}
+
+/** 주유 기록 CSV. 기존 엑셀과 같은 컬럼 이름을 쓴다. */
+export function fuelCsv(logs: FuelLog[]): string {
+  const sorted = [...logs].sort((a, b) => (a.date < b.date ? -1 : 1))
+  return toCsv(
+    ['주유날짜', '총주행거리', '리터당가격', '총주유가격', '리터', '주유소', '메모'],
+    sorted.map((f) => [f.date, f.odometer, f.pricePerLiter, f.totalPrice, f.liters, f.station ?? '', f.memo ?? '']),
+  )
+}
+
+/** 지출 기록 CSV. 카테고리·그룹 이름을 함께 넣어 그대로 읽을 수 있게 한다. */
+export function expenseCsv(expenses: Expense[], categories: Category[], groups: Group[]): string {
+  const catById = new Map(categories.map((c) => [c.id, c]))
+  const groupById = new Map(groups.map((g) => [g.id, g]))
+  const sorted = [...expenses].sort((a, b) => (a.date < b.date ? -1 : 1))
+  return toCsv(
+    ['지출날짜', '총주행거리', '그룹', '항목명', '금액', '장소', '메모'],
+    sorted.map((e) => {
+      const c = catById.get(e.categoryId)
+      return [
+        e.date,
+        e.odometer,
+        c ? (groupById.get(c.groupId)?.name ?? '') : '',
+        c?.name ?? '',
+        e.amount,
+        e.place ?? '',
+        e.memo ?? '',
+      ]
+    }),
+  )
+}
+
+/**
+ * CSV 파일 이름. car-expense-fuel-2026-09-30.csv
+ *
+ * 파일 이름에 한글을 쓰지 않는다. 크롬은 <a download="..."> 값에 ASCII가 아닌 글자가
+ * 있으면 이름을 통째로 버리고 확장자도 없는 'download'로 저장해 버린다.
+ * 그러면 엑셀에서 바로 열 수 없다.
+ */
+export type CsvKind = 'fuel' | 'expenses'
+
+export function csvFileName(kind: CsvKind, d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `car-expense-${kind}-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.csv`
+}
+
+/** CSV를 내려받는다. 공유를 지원하면 공유 시트를 먼저 띄운다. */
+export async function exportCsv(kind: CsvKind, text: string): Promise<void> {
+  const name = csvFileName(kind)
+  const file = new File([text], name, { type: 'text/csv' })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name })
+      return
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
+    }
+  }
+  downloadText(name, text, 'text/csv;charset=utf-8')
+}

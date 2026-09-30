@@ -7,10 +7,14 @@ import { useAppData } from '../hooks'
 import {
   BackupError,
   applyExcelImport,
+  expenseCsv,
   exportBackup,
+  exportCsv,
+  fuelCsv,
   parseBackup,
   restoreBackup,
   summarizeBackup,
+  type CsvKind,
   type RestoreMode,
 } from '../lib/backup'
 import { parseWorkbook, type ImportPreview } from '../lib/excel'
@@ -18,7 +22,7 @@ import type { BackupFile } from '../types'
 import { dateDot, num } from '../lib/format'
 
 export default function DataSettings() {
-  const { vehicle, categories } = useAppData()
+  const { vehicle, groups, categories, fuelLogs, expenses } = useAppData()
   const { show, node: toast } = useToast()
   const jsonInput = useRef<HTMLInputElement>(null)
   const xlsxInput = useRef<HTMLInputElement>(null)
@@ -38,6 +42,16 @@ export default function DataSettings() {
       if (!(e instanceof DOMException && e.name === 'AbortError')) show('백업에 실패했습니다')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function saveCsv(kind: CsvKind, label: string, text: string) {
+    try {
+      await exportCsv(kind, text)
+      show(`${label} CSV를 내보냈습니다`)
+    } catch (e) {
+      // 사용자가 공유를 취소한 경우는 알리지 않는다.
+      if (!(e instanceof DOMException && e.name === 'AbortError')) show('내보내기에 실패했습니다')
     }
   }
 
@@ -77,6 +91,21 @@ export default function DataSettings() {
         />
       </Section>
 
+      <Section title="CSV 내보내기">
+        <Row
+          title="주유 기록 CSV"
+          sub={`${num(fuelLogs.length)}건 · 엑셀에서 열어보는 용도`}
+          right={<Chevron />}
+          onClick={() => void saveCsv('fuel', '주유', fuelCsv(fuelLogs))}
+        />
+        <Row
+          title="지출 기록 CSV"
+          sub={`${num(expenses.length)}건 · 그룹·항목명 포함`}
+          right={<Chevron />}
+          onClick={() => void saveCsv('expenses', '지출', expenseCsv(expenses, categories, groups))}
+        />
+      </Section>
+
       <Section title="기존 데이터">
         <Row
           title="엑셀(.xlsx) 가져오기"
@@ -96,7 +125,7 @@ export default function DataSettings() {
 
       <p className="px-4 py-6 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         이 앱은 데이터를 이 브라우저 안에만 저장합니다. 브라우저 데이터를 지우면 기록도 사라지니
-        가끔 백업 파일을 만들어 두세요.
+        가끔 백업 파일을 만들어 두세요. CSV는 엑셀에서 보기 위한 것이고, 복원에는 쓸 수 없습니다.
       </p>
 
       {/* 파일 선택기는 화면에 보이지 않게 두고 위 항목에서 눌러 연다. */}

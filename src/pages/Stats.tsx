@@ -2,7 +2,7 @@
 // 1단계 범위: 기간 선택기, 요약 숫자, 월별 누적 막대, 비중 도넛, 전체 보유비용.
 // (연비·유가 추이·원/km는 2단계)
 import { useMemo, useState } from 'react'
-import { Donut, StackedBars, type Series } from '../components/charts'
+import { Donut, MileageBars, PriceLine, StackedBars, type Series } from '../components/charts'
 import { PageTitle } from '../components/ui'
 import { useAppData } from '../hooks'
 import { FUEL_SERIES, STACK_ORDER } from '../seed'
@@ -11,16 +11,21 @@ import {
   bucketUnit,
   filterExpenses,
   filterFuel,
+  fuelCostPerKm,
   makeSlices,
+  periodMileage,
   presetPeriod,
+  pricePoints,
   statsIncludedExpenses,
   summarize,
+  totalCostPerKm,
   totalOwnershipCost,
+  yearlyMileage,
   type Period,
   type PeriodPreset,
 } from '../lib/calc'
 import { monthRange, today, yearRange } from '../lib/date'
-import { dateDot, won, wonShort } from '../lib/format'
+import { dateDot, num, won, wonShort } from '../lib/format'
 
 export default function Stats() {
   const { vehicle, groups, categories, fuelLogs, expenses, loading } = useAppData()
@@ -43,6 +48,12 @@ export default function Stats() {
       unit,
       rows: bucketByPeriod(keys, f, e, categories, groups, unit),
       summary: summarize(f, e, categories, groups),
+      // 5.2절: 요약의 원/km는 통계 포함 지출 전체 ÷ 기간 주행거리.
+      // 주유비만의 원/km는 툴팁에 따로 보여준다.
+      costPerKm: totalCostPerKm(f, e, categories, groups),
+      fuelPerKm: fuelCostPerKm(f),
+      mileage: periodMileage(f),
+      prices: pricePoints(f),
       // 전체 보유비용은 기간과 무관한 누적 합계(차량구입 포함)
       ownership: totalOwnershipCost(
         filterFuel(fuelLogs, vehicle.id),
@@ -100,6 +111,23 @@ export default function Stats() {
     )
   }, [view, drill, categories, groups])
 
+  /**
+   * 연비 막대는 '연도별'이 기본 단위라 기간 선택기와 무관하게
+   * 전체 기록의 연도 범위를 쓴다. (4.5-4)
+   */
+  const { yearRows, recent12 } = useMemo(() => {
+    if (!vehicle) return { yearRows: [], recent12: null }
+    const all = filterFuel(fuelLogs, vehicle.id)
+    if (all.length === 0) return { yearRows: [], recent12: null }
+    const dates = all.map((f) => f.date).sort()
+    const years = yearRange(dates[0], dates.at(-1)!)
+    const last12 = presetPeriod('last12')
+    return {
+      yearRows: yearlyMileage(all, years),
+      recent12: periodMileage(filterFuel(fuelLogs, vehicle.id, last12)),
+    }
+  }, [vehicle, fuelLogs])
+
   const drillGroup = drill ? groups.find((g) => g.id === drill) : null
 
   if (loading) return <div className="p-6 text-slate-500">불러오는 중…</div>
@@ -148,12 +176,27 @@ export default function Stats() {
 
       {/* PC에서는 2열로 배치한다 (7.3절) */}
       <div className="space-y-4 px-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-        {/* 1. 요약 숫자 */}
+        {/* 1. 요약 숫자 4개 */}
         <section className="card md:col-span-2">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Big label="총지출" value={view?.summary.total ?? 0} />
             <Big label="주유비" value={view?.summary.fuel ?? 0} />
             <Big label="정비·기타" value={view?.summary.etc ?? 0} />
+            <div
+              title={
+                view?.fuelPerKm != null
+                  ? `주유비만: ${num(view.fuelPerKm, 1)}원/km`
+                  : '주유 기록이 3건 이상이어야 계산합니다'
+              }
+            >
+              <div className="text-xs text-slate-500 dark:text-slate-400">원/km</div>
+              <div className="text-2xl font-bold">
+                {view?.costPerKm != null ? num(view.costPerKm, 0) : '—'}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                {view?.fuelPerKm != null ? `주유 ${num(view.fuelPerKm, 0)}` : '데이터 부족'}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -199,6 +242,37 @@ export default function Stats() {
                   }
             }
           />
+        </section>
+
+        {/* 4. 연비 */}
+        <section className="card">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h2 className="font-bold">연비</h2>
+            <span className="text-xs text-slate-500">주유 건별로는 계산하지 않습니다</span>
+          </div>
+          {/* 최근 12개월 연비는 막대 옆이 아니라 카드 상단에 큰 숫자로 (8.3절) */}
+          <div className="mb-3 flex items-baseline gap-2">
+            <span className="text-3xl font-bold">
+              {recent12?.kmPerLiter != null ? num(recent12.kmPerLiter, 2) : '—'}
+            </span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              km/L · 최근 12개월
+              {recent12?.kmPerLiter == null ? ' (데이터 부족)' : ''}
+            </span>
+          </div>
+          <MileageBars rows={yearRows} />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            연도별. 마지막 주유분은 아직 쓰지 않은 기름이라 계산에서 뺍니다.
+          </p>
+        </section>
+
+        {/* 5. 유가 추이 */}
+        <section className="card">
+          <h2 className="mb-2 font-bold">유가 추이</h2>
+          <PriceLine points={view?.prices ?? []} />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            선택한 기간의 리터당 가격입니다.
+          </p>
         </section>
 
         {/* 6. 전체 보유비용 */}
