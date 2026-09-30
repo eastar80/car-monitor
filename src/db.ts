@@ -131,12 +131,14 @@ export async function setSetting(key: string, value: string, database: CarDB = d
 export async function wipeAll(database: CarDB = db): Promise<void> {
   await database.transaction(
     'rw',
-    database.vehicles,
-    database.groups,
-    database.categories,
-    database.fuelLogs,
-    database.expenses,
-    database.settings,
+    [
+      database.vehicles,
+      database.groups,
+      database.categories,
+      database.fuelLogs,
+      database.expenses,
+      database.settings,
+    ],
     async () => {
       await Promise.all([
         database.fuelLogs.clear(),
