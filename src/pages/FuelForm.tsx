@@ -47,23 +47,32 @@ export default function FuelForm() {
         setReady(true)
       })
     } else {
-      if (lastPrice) setPricePerLiter(String(Math.round(lastPrice)))
+      // 단가는 값을 미리 채우지 않는다. 지우고 쓰는 수고를 없애려고
+      // 회색 힌트로만 보여주고, 비워 두면 저장할 때 지난 단가를 쓴다.
       setReady(true)
     }
   }, [loading, ready, editing, id, lastPrice, navigate])
 
+  /**
+   * 실제로 저장할 리터당 가격.
+   * 새 기록에서 칸을 비워 두면 지난 주유 단가를 그대로 쓴다.
+   * (수정 중일 때는 비운 것을 '지우겠다'는 뜻으로 보고 대신 채우지 않는다.)
+   */
+  const lastPriceRounded = lastPrice ? Math.round(lastPrice) : 0
+  const effectivePrice = Number(pricePerLiter) || (editing ? 0 : lastPriceRounded)
+
   // 리터 자동 계산: 금액 ÷ 리터당 가격, 소수 2자리.
   useEffect(() => {
     if (litersEdited) return
-    const p = Number(pricePerLiter)
+    const p = effectivePrice
     const t = Number(totalPrice)
     setLiters(p > 0 && t > 0 ? (Math.round((t / p) * 100) / 100).toFixed(2) : '')
-  }, [pricePerLiter, totalPrice, litersEdited])
+  }, [effectivePrice, totalPrice, litersEdited])
 
   const odoValue = Number(odometer)
   // 현재 주행거리보다 작게 넣으면 경고만 하고 저장은 허용한다.
   const odoWarning = odometer !== '' && odoNow > 0 && odoValue < odoNow
-  const canSave = date !== '' && odometer !== '' && Number(pricePerLiter) > 0 && Number(totalPrice) > 0
+  const canSave = date !== '' && odometer !== '' && effectivePrice > 0 && Number(totalPrice) > 0
 
   async function save() {
     if (!vehicle || !canSave) return
@@ -71,7 +80,7 @@ export default function FuelForm() {
       vehicleId: vehicle.id,
       date,
       odometer: odoValue,
-      pricePerLiter: Number(pricePerLiter),
+      pricePerLiter: effectivePrice,
       totalPrice: Number(totalPrice),
       liters: Number(liters) || 0,
       station: station.trim() || null,
@@ -126,8 +135,22 @@ export default function FuelForm() {
           <NumInput value={odometer} onChange={setOdometer} suffix="km" placeholder={odoNow > 0 ? num(odoNow) : '0'} />
         </Field>
 
-        <Field label="리터당 가격" hint={!editing && lastPrice ? `지난 주유 ${num(Math.round(lastPrice))}원` : undefined}>
-          <NumInput value={pricePerLiter} onChange={setPricePerLiter} suffix="원" />
+        <Field
+          label="리터당 가격"
+          hint={
+            !editing && lastPriceRounded
+              ? pricePerLiter === ''
+                ? `비워 두면 지난 단가 ${num(lastPriceRounded)}원으로 저장됩니다`
+                : undefined
+              : undefined
+          }
+        >
+          <NumInput
+            value={pricePerLiter}
+            onChange={setPricePerLiter}
+            suffix="원"
+            placeholder={!editing && lastPriceRounded ? num(lastPriceRounded) : undefined}
+          />
         </Field>
 
         <Field label="주유 금액">
