@@ -234,16 +234,17 @@ function order(name: string): number {
 }
 
 /**
- * 드릴다운 도넛용 색. 그룹 색을 기준으로 밝기만 단계적으로 바꿔
- * "같은 그룹 안"이라는 것이 보이게 한다.
+ * 드릴다운 도넛용 색. 그룹 색을 흰색 쪽으로 단계적으로 섞어
+ * 색조는 유지한 채 밝기만 달라지게 한다. ("같은 그룹 안"이라는 것이 보이게)
+ * 각 채널에 곱하는 방식은 한 채널만 먼저 255에 닿아 형광색이 되므로 쓰지 않는다.
  */
 function shade(hex: string, step: number): string {
   const n = parseInt(hex.slice(1), 16)
-  // 단계마다 12%씩 밝게. 너무 밝아지지 않도록 5단계에서 되돌린다.
-  const f = 1 + (step % 5) * 0.14
-  const ch = (v: number) => Math.min(255, Math.round(v * f))
-  const r = ch((n >> 16) & 255)
-  const g = ch((n >> 8) & 255)
-  const b = ch(n & 255)
+  // 0% → 56%까지 5단계로 흰색을 섞는다.
+  const t = (step % 5) * 0.14
+  const mix = (v: number) => Math.round(v + (255 - v) * t)
+  const r = mix((n >> 16) & 255)
+  const g = mix((n >> 8) & 255)
+  const b = mix(n & 255)
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
 }
