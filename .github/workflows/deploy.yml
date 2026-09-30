@@ -1,0 +1,57 @@
+# main 브랜치에 push하면 테스트를 돌리고 GitHub Pages에 배포한다.
+# 저장소 Settings → Pages → Source를 'GitHub Actions'로 한 번만 바꿔 두면 된다.
+name: 배포
+
+on:
+  push:
+    branches: [main]
+  # Actions 탭에서 직접 실행할 수도 있게 한다.
+  workflow_dispatch:
+
+# Pages 배포에 필요한 권한
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치면 나중 것만 남긴다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 테스트
+        run: npm test
+
+      - name: 빌드
+        # GITHUB_ACTIONS 환경변수가 있으면 vite.config.ts가 base를 '/car-monitor/'로 잡는다.
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
