@@ -4,9 +4,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AppBar, Confirm, Field, NumInput } from '../components/ui'
 import { db, now, uuid } from '../db'
 import { useAppData } from '../hooks'
-import { currentOdometer } from '../lib/calc'
+import { currentOdometer, intervalStatus } from '../lib/calc'
 import { today } from '../lib/date'
-import { km, num } from '../lib/format'
+import { dateDot, km, num } from '../lib/format'
 import type { Category, Group } from '../types'
 
 export default function ExpenseForm() {
@@ -73,6 +73,21 @@ export default function ExpenseForm() {
       .filter((x) => x.items.length > 0)
       .sort((a, b) => groupUse(b.group) - groupUse(a.group) || a.group.sortOrder - b.group.sortOrder)
   }, [categories, groups, expenses, categoryId])
+
+  /**
+   * 교환주기가 있는 카테고리를 고르면 이전 교환 시점을 안내한다. (4.3절)
+   * 예: "이전 교환: 2025.03.10 · 12,340 km 전"
+   */
+  const lastChange = useMemo(() => {
+    const c = categories.find((x) => x.id === categoryId)
+    if (!c || (!c.intervalKm && !c.intervalMonths)) return null
+    const s = intervalStatus(c, expenses, odoNow)
+    if (!s.lastDate) return { text: '이전 교환 기록이 없습니다', muted: true }
+    const driven = s.lastOdometer !== null ? odoNow - s.lastOdometer : null
+    const parts = [`이전 교환: ${dateDot(s.lastDate)}`]
+    if (driven !== null && driven >= 0) parts.push(`${num(driven)} km 전`)
+    return { text: parts.join(' · '), muted: false }
+  }, [categoryId, categories, expenses, odoNow])
 
   const odoValue = Number(odometer)
   const odoWarning = odometer !== '' && odoNow > 0 && odoValue < odoNow
@@ -174,6 +189,11 @@ export default function ExpenseForm() {
               + 새 카테고리
             </button>
           </div>
+          {lastChange ? (
+            <p className={`mt-2 text-xs ${lastChange.muted ? 'text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>
+              {lastChange.text}
+            </p>
+          ) : null}
         </div>
 
         <Field label="금액">

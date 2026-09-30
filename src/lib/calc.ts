@@ -404,3 +404,39 @@ export function previousMonthPeriod(base: DateStr = today()): Period {
   const lastDay = new Date(Date.UTC(py, pm, 0)).getUTCDate()
   return { from: prev, to: `${prev.slice(0, 7)}-${String(lastDay).padStart(2, '0')}` }
 }
+
+// ---------------------------------------------------------------------------
+// 연비 집계 (2단계 통계용)
+// ---------------------------------------------------------------------------
+
+export interface YearMileage {
+  year: string
+  /** 그 해의 연비. 계산 불가면 null */
+  kmPerLiter: number | null
+  /** 그 해 주유 건수 */
+  count: number
+}
+
+/**
+ * 연도별 연비.
+ * 각 연도 1/1~12/31을 기간으로 잡아 5.1절 규칙을 그대로 적용한다.
+ * '마지막 건 제외' 규칙 때문에 연도 경계에서 데이터가 일부 겹칠 수 있는데,
+ * 개발요청서 5.1절에서 이를 허용한다.
+ */
+export function yearlyMileage(logs: FuelLog[], years: string[]): YearMileage[] {
+  return years.map((y) => {
+    const ofYear = logs.filter((f) => f.date.startsWith(y))
+    const r = periodMileage(ofYear)
+    return { year: y, kmPerLiter: r.kmPerLiter, count: ofYear.length }
+  })
+}
+
+/** 유가 추이용 점 목록. 날짜순으로 정렬한 리터당 가격. */
+export interface PricePoint {
+  date: DateStr
+  price: number
+}
+
+export function pricePoints(logs: FuelLog[]): PricePoint[] {
+  return sortFuel(logs).map((f) => ({ date: f.date, price: f.pricePerLiter }))
+}

@@ -6,6 +6,7 @@ import Records from './pages/Records'
 import Settings from './pages/Settings'
 import VehicleSettings from './pages/VehicleSettings'
 import CategorySettings from './pages/CategorySettings'
+import IntervalStatusPage from './pages/IntervalStatusPage'
 import FuelForm from './pages/FuelForm'
 import ExpenseForm from './pages/ExpenseForm'
 
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/vehicles" element={<VehicleSettings />} />
           <Route path="/settings/categories" element={<CategorySettings />} />
+          <Route path="/settings/intervals" element={<IntervalStatusPage />} />
           <Route path="/settings/data" element={<DataSettings />} />
           <Route path="/fuel/new" element={<FuelForm />} />
           <Route path="/fuel/:id" element={<FuelForm />} />

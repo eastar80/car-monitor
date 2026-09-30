@@ -4,7 +4,7 @@ import { PageTitle, Row, Section } from '../components/ui'
 import { useAppData } from '../hooks'
 import { num } from '../lib/format'
 
-const APP_VERSION = '1.0.0 (1단계)'
+const APP_VERSION = '2.0.0 (2단계)'
 
 export default function Settings() {
   const navigate = useNavigate()
@@ -29,8 +29,14 @@ export default function Settings() {
           onClick={() => navigate('/settings/categories')}
         />
         <Row
+          title="교환주기 현황"
+          sub="마지막 교환일·주행거리와 잔여량"
+          right={<Chevron />}
+          onClick={() => navigate('/settings/intervals')}
+        />
+        <Row
           title="데이터"
-          sub="백업, 복원, 엑셀 가져오기"
+          sub="백업, 복원, 엑셀 가져오기, CSV 내보내기"
           right={<Chevron />}
           onClick={() => navigate('/settings/data')}
         />
@@ -42,9 +48,6 @@ export default function Settings() {
         <Row title="지출 기록" right={<span className="text-sm text-slate-500">{num(expenses.length)}건</span>} />
       </Section>
 
-      <p className="px-4 py-6 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        교환주기 현황과 연비 통계는 2단계에서 추가됩니다.
-      </p>
     </div>
   )
 }

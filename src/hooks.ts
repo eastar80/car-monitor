@@ -2,6 +2,7 @@
 // dexie-react-hooks의 useLiveQuery는 IndexedDB가 바뀌면 화면을 자동으로 다시 그려준다.
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './db'
+import { LAST_BACKUP_KEY } from './lib/backup'
 import type { Category, Expense, FuelLog, Group, Vehicle } from './types'
 
 export interface AppData {
@@ -14,6 +15,8 @@ export interface AppData {
   fuelLogs: FuelLog[]
   /** 활성 차량의 지출 기록 (날짜 내림차순) */
   expenses: Expense[]
+  /** 마지막 백업 시각 (ISO). 백업한 적이 없으면 null */
+  lastBackupAt: string | null
   loading: boolean
 }
 
@@ -24,10 +27,11 @@ export interface AppData {
  */
 export function useAppData(): AppData {
   const data = useLiveQuery(async () => {
-    const [vehicles, groups, categories] = await Promise.all([
+    const [vehicles, groups, categories, lastBackup] = await Promise.all([
       db.vehicles.toArray(),
       db.groups.orderBy('sortOrder').toArray(),
       db.categories.orderBy('sortOrder').toArray(),
+      db.settings.get(LAST_BACKUP_KEY),
     ])
     const vehicle = vehicles.find((v) => v.isActive) ?? vehicles[0]
     const [fuelLogs, expenses] = vehicle
@@ -44,11 +48,15 @@ export function useAppData(): AppData {
       categories,
       fuelLogs: fuelLogs.sort(byDateDesc),
       expenses: expenses.sort(byDateDesc),
+      lastBackupAt: lastBackup?.value ?? null,
     }
   }, [])
 
   if (!data) {
-    return { vehicles: [], groups: [], categories: [], fuelLogs: [], expenses: [], loading: true }
+    return {
+      vehicles: [], groups: [], categories: [], fuelLogs: [], expenses: [],
+      lastBackupAt: null, loading: true,
+    }
   }
   return { ...data, loading: false }
 }
